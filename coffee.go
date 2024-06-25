@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -27,18 +29,30 @@ func main() {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(-1)
 	}
 
-	coffee := exec.CommandContext(ctx, "/usr/bin/caffeinate", "-d", "-w", fmt.Sprint(cmd.Process.Pid))
+	var coffeeOptions = []string{"-w", fmt.Sprint(cmd.Process.Pid)}
+	if val, found := os.LookupEnv("COFFEE_OPTIONS"); found {
+		coffeeOptions = append(coffeeOptions, strings.Split(val, ",")...)
+	} else {
+		coffeeOptions = append(coffeeOptions, "-u")
+	}
+
+	coffee := exec.CommandContext(ctx, "/usr/bin/caffeinate", coffeeOptions...)
 	defer func() {
 		if err := coffee.Run(); err != nil {
-			fmt.Printf("failed to start caffeinate: %v\n", err)
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				fmt.Printf("failed to start caffeinate: %v\n", err)
+			}
+
 			_ = cmd.Process.Signal(syscall.SIGTERM)
 		}
 	}()
 
 	if err := cmd.Wait(); err != nil {
-		panic(err)
+		procState, _ := cmd.Process.Wait()
+		os.Exit(procState.ExitCode())
 	}
 }
