@@ -37,16 +37,19 @@ func main() {
 	if val, found := os.LookupEnv("COFFEE_OPTIONS"); found {
 		coffeeOptions = append(coffeeOptions, strings.Split(val, ",")...)
 	} else {
-		coffeeOptions = append(coffeeOptions, "-u")
+		coffeeOptions = append(coffeeOptions, "-dim")
 	}
 
 	coffee := exec.CommandContext(ctx, "/usr/bin/caffeinate", coffeeOptions...)
-	defer func() {
+	go func() {
+		defer cancel()
+
 		if err := coffee.Run(); err != nil {
 			if !errors.Is(ctx.Err(), context.Canceled) {
 				fmt.Printf("failed to start caffeinate: %v\n", err)
 			}
 
+			// Do not let primary command run if we cannot track it
 			_ = cmd.Process.Signal(syscall.SIGTERM)
 		}
 	}()
